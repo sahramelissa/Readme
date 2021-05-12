@@ -8,3 +8,6 @@ That will fix the problem :)
 
 https://github.com/goharbor/harbor/issues/13461
 same fix like https://github.com/goharbor/harbor/issues/13465
+
+https://github.com/goharbor/harbor/issues/13315
+line 47 in harbor.yml data_volume: /data
