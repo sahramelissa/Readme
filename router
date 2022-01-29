@@ -76,5 +76,4 @@ Die Regeln werden übrigens in /etc/iptables/rules.v4 gespeichert. Das Format en
 
 sudo iptables-save > /etc/iptables/rules.v4
 
-Liebe Grüße,
-Jörg
+ 
