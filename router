@@ -1,0 +1,80 @@
+Hallo,
+
+im Ubuntu Ubuntu Wiki findet man eine Anleitung, wie man einen Linux-PC als Router verwendet. Diese enthält ein paar Fallstricke. Da man bei der Fehlersuche auf diverse "Wahnsinnsvorschläge" (resolved deinstallieren, Upstream-DNS in resolv.conf eintragen, DNSStubListener deaktivieren usw.) stößt, erklärt diese auf das Wesentliche reduzierte Anleitung die "Best practice".
+
+In meinem Beispiel hat der Linux-PC zwei Schnittstellen:
+
+    eth0: Internetanbindung
+    eth1: Hier hängen die Geräte, die den Rechner als Router nutzen sollen
+
+
+Zur Vorbereitung bekommt eth1 eine statische IP-Adresse zugewiesen. In meinem Beispiel habe ich, dem Ubuntu-Wiki entsprechend, die 192.168.3.1/24 gewählt.
+
+Konfiguration Server
+
+Zuerst installiert man dnsmasq:
+sudo apt-get install dnsmasq
+
+In der Datei /etc/dnsmasqd.conf werden folgende Einstellungen vorgenommen:
+# DHCP-Server aktiv für Interface
+interface=eth1
+
+# DHCP-Server nicht aktiv für Interface
+no-dhcp-interface=eth0
+
+Als DHCP-Range verwenden wir 192.168.3.2 bis 192.168.3.254:
+dhcp-range=192.168.3.2,192.168.3.254,12h
+
+Ganz wichtig: Mit dieser Konfiguration kann der dnsmasq noch nicht starten, da er versucht, sich an Port 53 vom localhost zu klemmen. Dort residiert aber schon der resolved und der Port kann nur einmal belegt werden. "Best practice" ist hier, folgende zusätzliche Option in der /etc/dnsmasqd.conf zu setzen:
+bind-interfaces
+
+Damit wird erreicht, dass der Service nur an Schnittstellen gebunden wird, die wir explizit angegeben haben. In unserem Beispiel also nur an eth1.
+
+Zum Testen starten wir den dnsmasq manuell:
+systemctl start dnsmasq
+
+Ob er läuft bzw. warum er nicht startet, verrät uns folgender Befehl:
+systemctl status dnsmasq -l
+
+Wenn das funktioniert, möchten wir, dass dnsmasq bei jedem Systemstart automatisch geladen wird:
+systemctl enable dnsmasq
+
+Ganz wichtig: Hier lautet der zweite Fallstrick, da die benötigten Schnittstellen beim Systemstart u.U. noch nicht aktiv sind. Wir holen uns die Startdatei wie folgt in den Editor:
+systemctl edit --full dnsmasq.service
+
+Hier finden wir den Abschnitt [Unit], dort ergänzen wir folgende Beiträge:
+After=network-online.target
+Wants=network-online.target
+
+Nach dem Speichern können wir das Ergebnis dieser Änderung in /etc/systemd/system/dnsmasq.service überprüfen.
+
+Portweiterleitung
+
+IP-Forwarding aktivieren:
+sudo sysctl -w net.ipv4.ip_forward=1
+
+Das Forwarding funktioniert nur bis zum nächsten Neustart. Möchte man es dauerhaft etablieren, entfernt man die Auskommentierung in der /etc/sysctl.conf
+
+# sysctl net.ipv4.ip_forward
+net.ipv4.ip_forward = 1
+
+Wir benötigen Regeln für die iptables:
+
+sudo iptables -A FORWARD -o eth0 -i eth1 -s 192.168.3.0/24 -m conntrack --ctstate NEW -j ACCEPT
+
+sudo iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+NAT aktivieren:
+sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+Zum (dauerhaften) Speichern der Regeln installieren wir das folgende Paket:
+apt-get install iptables-persistent
+
+Während der Installation (und nur dann!) werden wir gefragt, ob wir die Regeln dauerhaft speichern sollen. Dies bejahen wird für IPv4.
+
+Die Regeln werden übrigens in /etc/iptables/rules.v4 gespeichert. Das Format entspricht dem von iptables-save bzw. iptables-restore. D.h., wenn wir die Regeln irgendwann einmal erweitern, können wir sie wie folgt dauerhaft etablieren:
+
+sudo iptables-save > /etc/iptables/rules.v4
+
+Liebe Grüße,
+Jörg
